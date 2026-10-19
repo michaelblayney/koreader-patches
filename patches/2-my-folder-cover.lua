@@ -1,3 +1,5 @@
+-- version: 1.0.0
+-- replaces: 2-browser-folder-cover.lua
 -- Folder covers for the Mosaic file browser: stacked sheets, folder tab, count badge.
 -- Based on 2-browser-folder-cover.lua from https://github.com/sebdelsol/KOReader.patches
 -- (MIT, Copyright (c) 2025 sebdelsol, see LICENSE-sebdelsol).

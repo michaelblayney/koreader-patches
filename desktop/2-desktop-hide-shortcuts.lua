@@ -1,3 +1,5 @@
+-- version: 1.0.0
+-- desktop-only: never send to the e-reader
 -- Desktop dev only: hide the Q/W/E... keyboard shortcut labels in menus,
 -- so the file browser looks like it does on the Kindle.
 local Device = require("device")

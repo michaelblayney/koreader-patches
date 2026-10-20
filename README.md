@@ -17,6 +17,8 @@ My KOReader user patches, built for a Kindle Paperwhite 12th gen (KOReader v2026
   - `2-no-fm-title.lua`: removes the "KOReader" title from the file browser and moves the folder
     path up into its place (italic), between the home and + icons, so the header is one row shorter.
     The home folder shows no text at all. Settings in the `Title = {...}` block.
+  - `2-fm-cleanup.lua`: file browser cleanup. Hides the page arrow buttons around "Page x of y"
+    (swiping still turns pages) and nudges the home and + icons. Settings in the `Cleanup = {...}` block.
 - `desktop/` is for the desktop emulator only.
   - `2-desktop-hide-shortcuts.lua`: hides the Q/W/E keyboard shortcut labels so the
     file browser looks like it does on an e-reader. Does nothing on a device.

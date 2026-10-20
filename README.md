@@ -10,6 +10,8 @@ My KOReader user patches, built for a Kindle Paperwhite 12th gen (KOReader v2026
     stacked sheets behind (top and right), thin borders and a rounded-square book count badge.
     Settings for sizes and colours are in the `Folder = {...}` block near the top.
     Menu toggles: file browser settings → Mosaic and detailed list settings.
+  - `2-no-focus-underline.lua`: removes the black underline KOReader puts under the folder
+    you just came back out of (and any other focus underline) in the Mosaic and list views.
 - `desktop/` is for the desktop emulator only.
   - `2-desktop-hide-shortcuts.lua`: hides the Q/W/E keyboard shortcut labels so the
     file browser looks like it does on an e-reader. Does nothing on a device.

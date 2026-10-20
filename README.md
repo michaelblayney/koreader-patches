@@ -12,6 +12,10 @@ My KOReader user patches, built for a Kindle Paperwhite 12th gen (KOReader v2026
 - `desktop/` is for the desktop emulator only.
   - `2-desktop-hide-shortcuts.lua`: hides the Q/W/E keyboard shortcut labels so the
     file browser looks like it does on an e-reader. Does nothing on a device.
+  - `2-desktop-eink-look.lua`: makes the emulator window look like an e-ink screen
+    (16 grey levels, ordered dithering, tinted paper, grey ink). Needs `EMULATE_BB_TYPE=BB8`.
+    `EINK_LOOK=lit` (default, frontlight on), `unlit` (frontlight off) or `plain` (off).
+    Tune the presets in the `Presets = {...}` block.
 
 ## Installing on the device
 

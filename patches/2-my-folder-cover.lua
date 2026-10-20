@@ -1,4 +1,4 @@
--- version: 1.0.0
+-- version: 1.1.2
 -- replaces: 2-browser-folder-cover.lua
 -- Folder covers for the Mosaic file browser: stacked sheets, folder tab, count badge.
 -- Based on 2-browser-folder-cover.lua from https://github.com/sebdelsol/KOReader.patches
@@ -100,6 +100,22 @@ end
 --     return item_table
 -- end
 
+-- Average grey of the top `rows` pixel rows of a blitbuffer, over its first `w` columns.
+-- Uses KOReader's own colour-to-grey conversion, so colour covers come out as on the Kindle.
+local function averageTopGrey(bb, w, rows)
+    if not bb then return end
+    w = math.min(w, bb:getWidth())
+    rows = math.min(rows, bb:getHeight())
+    if w <= 0 or rows <= 0 then return end
+    local sum = 0
+    for y = 0, rows - 1 do
+        for x = 0, w - 1 do
+            sum = sum + bb:getPixel(x, y):getColor8().a
+        end
+    end
+    return Blitbuffer.Color8(math.floor(sum / (w * rows) + 0.5))
+end
+
 local function capitalize(sentence)
     local words = {}
     for word in sentence:gmatch("%S+") do
@@ -118,6 +134,8 @@ local Folder = {
         width = 0.5, -- fraction of the cover width
         height = Screen:scaleBySize(8),
         radius = Screen:scaleBySize(3), -- rounding of the tab's top corners
+        fill_from_cover = true, -- fill with the average grey of the cover just below the tab
+        sample_rows = 3, -- how many of the cover's top pixel rows to average
     },
     face = {
         border_size = Size.border.thin, -- same as book covers
@@ -152,7 +170,8 @@ local function patchCoverBrowser(plugin)
     end
 
     local settings = {
-        crop_to_fit = BooleanSetting(_("Crop folder custom image"), "folder_crop_custom_image", true),
+        -- new key: the old one stored an inverted value (default on), so reusing it would flip devices back on
+        crop_to_fit = BooleanSetting(_("Crop folder custom image"), "folder_crop_custom_image_on", false),
         name_centered = BooleanSetting(_("Folder name centered"), "folder_name_centered", true),
         show_folder_name = BooleanSetting(_("Show folder name"), "folder_name_show", true),
     }
@@ -316,11 +335,18 @@ local function patchCoverBrowser(plugin)
         -- so only its top (with rounded corners) shows
         local border = Folder.face.border_size
         local tab_w = math.floor(dimen.w * Folder.tab.width)
+        local tab_fill = Blitbuffer.COLOR_WHITE
+        local fill_is_cover = false
+        if Folder.tab.fill_from_cover then
+            -- image._bb is ImageWidget's internal scaled image; fall back to white if that ever changes
+            local ok, grey = pcall(averageTopGrey, image._bb, tab_w - 2 * border, Folder.tab.sample_rows)
+            if ok and grey then tab_fill, fill_is_cover = grey, true end
+        end
         local tab = FrameContainer:new {
             padding = 0,
             bordersize = border,
             radius = Folder.tab.radius,
-            background = Blitbuffer.COLOR_WHITE,
+            background = tab_fill,
             CenterContainer:new {
                 dimen = { w = tab_w - 2 * border, h = tab_h + Folder.tab.radius - 2 * border },
                 VerticalSpan:new { width = 0 },
@@ -332,11 +358,24 @@ local function patchCoverBrowser(plugin)
 
         -- erase the cover's top border under the tab, so tab and cover read as one piece
         local tab_join = LineWidget:new {
-            background = Blitbuffer.COLOR_WHITE,
+            background = tab_fill,
             dimen = { w = tab_w - 2 * border, h = border },
         }
         tab_join.overlap_offset = { border, top_h }
         table.insert(stack, tab_join)
+
+        -- Night mode inverts the whole screen, and KOReader pre-inverts images so they still show
+        -- their real colours. Do the same for a cover-coloured fill, checked at paint time so
+        -- toggling night mode doesn't need the tiles rebuilt.
+        if fill_is_cover then
+            for _, w in ipairs { tab, tab_join } do
+                local orig_paintTo = w.paintTo
+                w.paintTo = function(this, ...)
+                    this.background = Screen.night_mode and tab_fill:invert() or tab_fill
+                    return orig_paintTo(this, ...)
+                end
+            end
+        end
 
         local widget = CenterContainer:new {
             dimen = { w = self.width, h = self.height },

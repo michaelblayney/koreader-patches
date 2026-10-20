@@ -5,7 +5,8 @@ My KOReader user patches, built for a Kindle Paperwhite 12th gen (KOReader v2026
 ## What's here
 
 - `patches/` go on the e-reader.
-  - `2-my-folder-cover.lua`: folder tiles in the Mosaic file browser get a folder tab,
+  - `2-my-folder-cover.lua`: folder tiles in the Mosaic file browser get a folder tab (with the
+    folder name, toggled by "Show folder name"), coloured from the top of the cover,
     stacked sheets behind (top and right), thin borders and a rounded-square book count badge.
     Settings for sizes and colours are in the `Folder = {...}` block near the top.
     Menu toggles: file browser settings → Mosaic and detailed list settings.

@@ -1,10 +1,9 @@
--- version: 1.1.2
+-- version: 1.3.3
 -- replaces: 2-browser-folder-cover.lua
--- Folder covers for the Mosaic file browser: stacked sheets, folder tab, count badge.
+-- Folder covers for the Mosaic file browser: stacked sheets, folder tab with the name, count badge.
 -- Based on 2-browser-folder-cover.lua from https://github.com/sebdelsol/KOReader.patches
 -- (MIT, Copyright (c) 2025 sebdelsol, see LICENSE-sebdelsol).
 
-local AlphaContainer = require("ui/widget/container/alphacontainer")
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
 local BottomContainer = require("ui/widget/container/bottomcontainer")
@@ -18,9 +17,7 @@ local LineWidget = require("ui/widget/linewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
-local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
-local TopContainer = require("ui/widget/container/topcontainer")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local userpatch = require("userpatch")
@@ -116,14 +113,6 @@ local function averageTopGrey(bb, w, rows)
     return Blitbuffer.Color8(math.floor(sum / (w * rows) + 0.5))
 end
 
-local function capitalize(sentence)
-    local words = {}
-    for word in sentence:gmatch("%S+") do
-        table.insert(words, word:sub(1, 1):upper() .. word:sub(2):lower())
-    end
-    return table.concat(words, " ")
-end
-
 local Folder = {
     edge = {
         thick = Size.border.thin, -- same as book covers
@@ -131,22 +120,25 @@ local Folder = {
         color = Blitbuffer.COLOR_GRAY_4,
     },
     tab = { -- folder tab sticking up from the top-left of the cover
-        width = 0.5, -- fraction of the cover width
-        height = Screen:scaleBySize(8),
+        width = 0.55, -- fraction of the cover width
+        height = Screen:scaleBySize(8), -- fixed; a name taller than this overflows the tab
         radius = Screen:scaleBySize(3), -- rounding of the tab's top corners
+        font = "NotoSerif-Italic.ttf", -- ships with KOReader (fonts/noto); falls back to the UI font if missing
+        font_size = 12,
+        dark_text = Blitbuffer.Color8(0x24), -- near-black charcoal, used on light fills
+        light_text = Blitbuffer.COLOR_WHITE, -- used on dark fills
+        name_padding = Screen:scaleBySize(4), -- space between the name and the tab's sides
+        name_offset_y = Screen:scaleBySize(6), -- push the name down from the tab's centre (may bleed onto the cover)
         fill_from_cover = true, -- fill with the average grey of the cover just below the tab
         sample_rows = 3, -- how many of the cover's top pixel rows to average
     },
     face = {
         border_size = Size.border.thin, -- same as book covers
-        name_border_size = Size.border.thick, -- name box keeps its original border
-        alpha = 0.75,
         nb_items_font_size = 15,
         nb_items_border_size = Size.border.thin,
         nb_items_margin_x = Screen:scaleBySize(12), -- gap from the right edge
         nb_items_margin_y = Screen:scaleBySize(6), -- gap from the bottom edge
         nb_items_corner = 0.3, -- corner rounding as a fraction of badge size (0.5 = circle, 0 = sharp square)
-        dir_max_font_size = 25,
     },
 }
 
@@ -172,8 +164,7 @@ local function patchCoverBrowser(plugin)
     local settings = {
         -- new key: the old one stored an inverted value (default on), so reusing it would flip devices back on
         crop_to_fit = BooleanSetting(_("Crop folder custom image"), "folder_crop_custom_image_on", false),
-        name_centered = BooleanSetting(_("Folder name centered"), "folder_name_centered", true),
-        show_folder_name = BooleanSetting(_("Show folder name"), "folder_name_show", true),
+        show_folder_name = BooleanSetting(_("Show folder name"), "folder_name_show", true), -- written in the tab
     }
 
     -- cover item
@@ -229,6 +220,18 @@ local function patchCoverBrowser(plugin)
     function MosaicMenuItem:_setFolderCover(img)
         -- stack: 2 sheets behind the cover, each shifted up and right by one step
         local step = Folder.edge.thick + Folder.edge.margin
+        local tab_name
+        if settings.show_folder_name.get() then
+            local name = self.text:gsub("/$", "")
+            -- leading "~" only pushes a folder to the end of the list; don't print it
+            local shown = name:gsub("^~+%s*", "")
+            if shown == "" then shown = name end
+            tab_name = TextWidget:new {
+                text = BD.directory(shown),
+                face = Font:getFace(Folder.tab.font, Folder.tab.font_size) or Font:getFace("cfont", Folder.tab.font_size),
+                padding = 0,
+            }
+        end
         local tab_h = Folder.tab.height
         local top_h = math.max(2 * step, tab_h)
         local right_w = 2 * step
@@ -257,24 +260,9 @@ local function patchCoverBrowser(plugin)
             overlap_align = "center",
         }
 
-        local directory, nbitems = self:_getTextBoxes { w = size.w, h = size.h }
+        local nbitems = self:_getNbItems()
         local size = nbitems:getSize()
         local nb_size = math.max(size.w, size.h)
-
-        local folder_name_widget
-        if settings.show_folder_name.get() then
-            folder_name_widget = (settings.name_centered.get() and CenterContainer or TopContainer):new {
-                dimen = dimen,
-                FrameContainer:new {
-                    padding = 0,
-                    bordersize = Folder.face.name_border_size,
-                    AlphaContainer:new { alpha = Folder.face.alpha, directory },
-                },
-                overlap_align = "center",
-            }
-        else
-            folder_name_widget = VerticalSpan:new { width = 0 }
-        end
 
         local nbitems_widget
         if tonumber(nbitems.text) ~= 0 then
@@ -301,11 +289,10 @@ local function patchCoverBrowser(plugin)
             nbitems_widget = VerticalSpan:new { width = 0 }
         end
 
-        -- the cover face (image + name + count), placed bottom-left of the stack block
+        -- the cover face (image + count), placed bottom-left of the stack block
         local face = OverlapGroup:new {
             dimen = { w = dimen.w, h = dimen.h },
             image_widget,
-            folder_name_widget,
             nbitems_widget,
         }
         face.overlap_offset = { 0, top_h }
@@ -342,14 +329,23 @@ local function patchCoverBrowser(plugin)
             local ok, grey = pcall(averageTopGrey, image._bb, tab_w - 2 * border, Folder.tab.sample_rows)
             if ok and grey then tab_fill, fill_is_cover = grey, true end
         end
+        -- name: charcoal on light fills, white on dark ones, cut short with "…" if it doesn't fit
+        local text_color = tab_fill:getColor8().a < 128 and Folder.tab.light_text or Folder.tab.dark_text
+        if tab_name then
+            tab_name.fgcolor = text_color
+            tab_name:setMaxWidth(tab_w - 2 * border - 2 * Folder.tab.name_padding)
+        end
         local tab = FrameContainer:new {
             padding = 0,
             bordersize = border,
             radius = Folder.tab.radius,
             background = tab_fill,
-            CenterContainer:new {
-                dimen = { w = tab_w - 2 * border, h = tab_h + Folder.tab.radius - 2 * border },
-                VerticalSpan:new { width = 0 },
+            VerticalGroup:new {
+                CenterContainer:new { -- gives the tab its width (a bare span has none)
+                    dimen = { w = tab_w - 2 * border, h = tab_h - 2 * border },
+                    VerticalSpan:new { width = 0 },
+                },
+                VerticalSpan:new { width = Folder.tab.radius }, -- hidden behind the cover
             },
         }
         tab.overlap_offset = { 0, top_h - tab_h }
@@ -364,6 +360,16 @@ local function patchCoverBrowser(plugin)
         tab_join.overlap_offset = { border, top_h }
         table.insert(stack, tab_join)
 
+        -- name goes on top of everything, so it can sit low and bleed onto the cover
+        if tab_name then
+            local name_size = tab_name:getSize()
+            tab_name.overlap_offset = {
+                border + math.floor((tab_w - 2 * border - name_size.w) / 2),
+                top_h - tab_h + math.floor((tab_h - name_size.h) / 2) + Folder.tab.name_offset_y,
+            }
+            table.insert(stack, tab_name)
+        end
+
         -- Night mode inverts the whole screen, and KOReader pre-inverts images so they still show
         -- their real colours. Do the same for a cover-coloured fill, checked at paint time so
         -- toggling night mode doesn't need the tiles rebuilt.
@@ -372,6 +378,13 @@ local function patchCoverBrowser(plugin)
                 local orig_paintTo = w.paintTo
                 w.paintTo = function(this, ...)
                     this.background = Screen.night_mode and tab_fill:invert() or tab_fill
+                    return orig_paintTo(this, ...)
+                end
+            end
+            if tab_name then -- the name has to flip with the fill, or it loses its contrast
+                local orig_paintTo = tab_name.paintTo
+                tab_name.paintTo = function(this, ...)
+                    this.fgcolor = Screen.night_mode and text_color:invert() or text_color
                     return orig_paintTo(this, ...)
                 end
             end
@@ -389,43 +402,13 @@ local function patchCoverBrowser(plugin)
         self._underline_container[1] = widget
     end
 
-    function MosaicMenuItem:_getTextBoxes(dimen)
-        local nbitems = TextWidget:new {
+    function MosaicMenuItem:_getNbItems()
+        return TextWidget:new {
             text = self.mandatory:match("(%d+) \u{F016}") or "", -- nb books
             face = Font:getFace("cfont", Folder.face.nb_items_font_size),
             bold = false,
             padding = 0,
         }
-
-        local text = self.text
-        if text:match("/$") then text = text:sub(1, -2) end -- remove "/"
-        text = BD.directory(capitalize(text))
-        local available_height = dimen.h - 2 * nbitems:getSize().h
-        local dir_font_size = Folder.face.dir_max_font_size
-        local directory
-
-        while true do
-            if directory then directory:free(true) end
-            directory = TextBoxWidget:new {
-                text = text,
-                face = Font:getFace("cfont", dir_font_size),
-                width = dimen.w,
-                alignment = "center",
-                bold = true,
-            }
-            if directory:getSize().h <= available_height then break end
-            dir_font_size = dir_font_size - 1
-            if dir_font_size < 10 then -- don't go too low
-                directory:free()
-                directory.height = available_height
-                directory.height_adjust = true
-                directory.height_overflow_show_ellipsis = true
-                directory:init()
-                break
-            end
-        end
-
-        return directory, nbitems
     end
 
     -- menu
